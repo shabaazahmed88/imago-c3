@@ -1,0 +1,7 @@
+# playbooks/lb.yml
+- name: Provision Load Balancer (Nginx + TLS)
+  hosts: lb
+  become: true
+  gather_facts: true
+  roles:
+    - lb

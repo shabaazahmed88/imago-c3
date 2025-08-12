@@ -1,0 +1,7 @@
+server_name: "api.local.imago"
+tls_dir: "/etc/nginx/tls"
+nginx_site_path: "/etc/nginx/sites-available/api.conf"
+nginx_site_link: "/etc/nginx/sites-enabled/api.conf"
+tls_country: "DE"
+tls_org: "IMAGO"
+tls_cn: "{{ server_name }}"

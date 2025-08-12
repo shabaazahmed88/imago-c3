@@ -1,0 +1,7 @@
+- name: Provision API web servers (Nginx TLS + Zabbix agent)
+  hosts: web
+  become: true
+  gather_facts: true
+  roles:
+    - nginx_tls
+    - zabbix_agent

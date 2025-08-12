@@ -1,0 +1,78 @@
+- name: Ensure prereqs
+  apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+    state: present
+    update_cache: yes
+  when: ansible_facts.os_family == "Debian"
+
+- name: Select Zabbix repo version (7.0 for noble, 6.4 for jammy)
+  set_fact:
+    zbx_version: "{{ '7.0' if ansible_distribution_release == 'noble' else '6.4' }}"
+  when: ansible_facts.os_family == "Debian"
+
+- name: Clean old Zabbix repo/key (if any)
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/apt/sources.list.d/zabbix.list
+    - /etc/apt/trusted.gpg.d/zabbix.gpg
+    - /usr/share/keyrings/zabbix.gpg
+  when: ansible_facts.os_family == "Debian"
+
+- name: Fetch Zabbix repo key (ASCII)
+  get_url:
+    url: https://repo.zabbix.com/zabbix-official-repo.key
+    dest: /tmp/zabbix.key
+    mode: '0644'
+  when: ansible_facts.os_family == "Debian"
+
+- name: Dearmor Zabbix key to keyring
+  command: "gpg --dearmor -o /usr/share/keyrings/zabbix.gpg /tmp/zabbix.key"
+  args:
+    creates: /usr/share/keyrings/zabbix.gpg
+  when: ansible_facts.os_family == "Debian"
+
+- name: Add Zabbix APT repo
+  apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/zabbix.gpg] https://repo.zabbix.com/zabbix/{{ zbx_version }}/ubuntu {{ ansible_distribution_release }} main"
+    filename: zabbix
+    state: present
+  when: ansible_facts.os_family == "Debian"
+
+- name: apt update
+  apt:
+    update_cache: yes
+  when: ansible_facts.os_family == "Debian"
+
+- name: Install Zabbix agent2
+  apt:
+    name: zabbix-agent2
+    state: present
+  when: ansible_facts.os_family == "Debian"
+
+- name: Configure Zabbix server
+  lineinfile:
+    path: /etc/zabbix/zabbix_agent2.conf
+    regexp: '^Server='
+    line: "Server={{ zabbix_server }}"
+  notify: Restart zabbix-agent2
+  when: ansible_facts.os_family == "Debian"
+
+- name: Set Hostname
+  lineinfile:
+    path: /etc/zabbix/zabbix_agent2.conf
+    regexp: '^Hostname='
+    line: "Hostname={{ inventory_hostname }}"
+  notify: Restart zabbix-agent2
+  when: ansible_facts.os_family == "Debian"
+
+- name: Ensure agent2 running/enabled
+  service:
+    name: zabbix-agent2
+    state: started
+    enabled: true
+  when: ansible_facts.os_family == "Debian"

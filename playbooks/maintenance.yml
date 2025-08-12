@@ -1,0 +1,21 @@
+- name: Patch & reboot servers
+  hosts: web
+  become: true
+  gather_facts: true
+  tasks:
+    - name: APT upgrade (Debian/Ubuntu)
+      apt:
+        update_cache: yes
+        upgrade: dist
+      when: ansible_facts.pkg_mgr == "apt"
+
+    - name: DNF/YUM upgrade (RHEL-family)
+      dnf:
+        name: "*"
+        state: latest
+      when: ansible_facts.pkg_mgr in ["dnf","yum"]
+
+    - name: Reboot if required
+      reboot:
+        msg: "Reboot triggered by maintenance playbook"
+        reboot_timeout: 900

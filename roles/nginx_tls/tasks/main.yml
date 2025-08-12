@@ -1,0 +1,58 @@
+- name: Ensure packages are present
+  package:
+    name:
+      - nginx
+      - openssl
+    state: present
+
+- name: Create TLS dir
+  file:
+    path: "{{ tls_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Generate private key if missing
+  command: "openssl genrsa -out {{ tls_dir }}/privkey.pem 2048"
+  args:
+    creates: "{{ tls_dir }}/privkey.pem"
+
+- name: Generate self-signed cert if missing
+  command: >
+    openssl req -x509 -new -nodes -key {{ tls_dir }}/privkey.pem
+    -sha256 -days 365 -out {{ tls_dir }}/fullchain.pem
+    -subj "/C={{ tls_country|default('DE') }}/O={{ tls_org|default('IMAGO') }}/CN={{ tls_cn|default(server_name|default('api.local.imago')) }}"
+  args:
+    creates: "{{ tls_dir }}/fullchain.pem"
+
+- name: NGINX site config (backup previous)
+  template:
+    src: "api.conf.j2"
+    dest: "{{ nginx_site_path }}"
+    owner: root
+    group: root
+    mode: '0644'
+    backup: yes
+  notify: Reload nginx
+
+- name: Enable site
+  file:
+    src: "{{ nginx_site_path }}"
+    dest: "{{ nginx_site_link }}"
+    state: link
+  notify: Reload nginx
+
+- name: Ensure nginx running/enabled
+  service:
+    name: nginx
+    state: started
+    enabled: true
+
+# Optional: open HTTPS if ufw exists
+- name: Allow https in ufw if installed
+  command: "ufw allow 443/tcp"
+  register: ufw_result
+  changed_when: "'Rule added' in ufw_result.stdout or 'Skipping' in ufw_result.stdout"
+  failed_when: false
+  when: ansible_facts.os_family == "Debian"

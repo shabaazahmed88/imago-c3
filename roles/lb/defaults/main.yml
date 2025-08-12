@@ -1,0 +1,13 @@
+lb_server_name: "api.local.imago"   # change to your DNS (e.g., api.yourdomain.com)
+lb_use_letsencrypt: false           # set true when you have DNS + ports 80/443 open
+lb_email: "you@example.com"         # required if lb_use_letsencrypt=true
+
+# Self-signed paths (also used as fallback)
+lb_tls_dir: "/etc/nginx/tls"
+lb_tls_fullchain: "{{ lb_tls_dir }}/fullchain.pem"
+lb_tls_privkey:  "{{ lb_tls_dir }}/privkey.pem"
+
+# Upstream API backends (HTTPS by default; change to :80 if you keep HTTP on nodes)
+lb_upstreams:
+  - "51.20.124.89:443"
+  - "13.51.238.168:443"

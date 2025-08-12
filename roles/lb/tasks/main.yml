@@ -1,0 +1,109 @@
+# roles/lb/tasks/main.yml
+- name: Install nginx and openssl (and snapd for certbot path)
+  apt:
+    name:
+      - nginx
+      - openssl
+      - snapd
+    state: present
+    update_cache: yes
+
+- name: Ensure TLS dir exists
+  file:
+    path: "{{ lb_tls_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+# --- Let’s Encrypt branch (HTTP-01 via certbot) ---
+- name: Install certbot via snap (classic)
+  command: snap install --classic certbot
+  args:
+    creates: /snap/bin/certbot
+  when: lb_use_letsencrypt | bool
+
+- name: Symlink certbot
+  file:
+    src: /snap/bin/certbot
+    dest: /usr/bin/certbot
+    state: link
+  when: lb_use_letsencrypt | bool
+
+- name: Baseline HTTP site for ACME challenge (port 80)
+  copy:
+    dest: /etc/nginx/sites-available/api.conf
+    mode: '0644'
+    content: |
+      server {
+          listen 80;
+          server_name {{ lb_server_name }};
+          location /.well-known/acme-challenge/ { root /var/www/html; }
+          location / { return 301 https://$host$request_uri; }
+      }
+  notify: Reload nginx
+  when: lb_use_letsencrypt | bool
+
+- name: Enable HTTP site
+  file:
+    src: /etc/nginx/sites-available/api.conf
+    dest: /etc/nginx/sites-enabled/api.conf
+    state: link
+  notify: Reload nginx
+  when: lb_use_letsencrypt | bool
+
+- name: Ensure ACME webroot
+  file:
+    path: /var/www/html
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: '0755'
+  when: lb_use_letsencrypt | bool
+
+- name: Obtain trusted cert (first issue)
+  command: >
+    certbot --nginx
+    -d {{ lb_server_name }}
+    --agree-tos -m {{ lb_email }}
+    --non-interactive
+  args:
+    creates: "/etc/letsencrypt/live/{{ lb_server_name }}/fullchain.pem"
+  when: lb_use_letsencrypt | bool
+
+# --- Self-signed branch (or fallback when LE is off) ---
+- name: Generate self-signed key if missing
+  command: "openssl genrsa -out {{ lb_tls_privkey }} 2048"
+  args:
+    creates: "{{ lb_tls_privkey }}"
+  when: not lb_use_letsencrypt | bool
+
+- name: Generate self-signed cert if missing
+  command: >
+    openssl req -x509 -new -nodes -key {{ lb_tls_privkey }}
+    -sha256 -days 365 -out {{ lb_tls_fullchain }}
+    -subj "/C=DE/O=IMAGO/CN={{ lb_server_name }}"
+  args:
+    creates: "{{ lb_tls_fullchain }}"
+  when: not lb_use_letsencrypt | bool
+
+# --- Render final nginx.conf using either LE paths or self-signed paths ---
+- name: Set cert paths (LE vs self-signed)
+  set_fact:
+    lb_cert_path: "{{ '/etc/letsencrypt/live/' ~ lb_server_name ~ '/fullchain.pem' if lb_use_letsencrypt else lb_tls_fullchain }}"
+    lb_key_path:  "{{ '/etc/letsencrypt/live/' ~ lb_server_name ~ '/privkey.pem'  if lb_use_letsencrypt else lb_tls_privkey }}"
+
+- name: Deploy nginx.conf (reverse proxy to backends)
+  template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/nginx.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reload nginx
+
+- name: Ensure nginx running/enabled
+  service:
+    name: nginx
+    state: started
+    enabled: true

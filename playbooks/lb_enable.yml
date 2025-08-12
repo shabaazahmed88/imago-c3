@@ -1,0 +1,19 @@
+- name: Remove 'down' from backend and reload
+  hosts: lb
+  become: true
+  gather_facts: false
+  vars:
+    backend_ip: "{{ target_ip }}"
+    lb_conf: "/etc/nginx/nginx.conf"
+  tasks:
+    - name: Remove 'down' flag for backend {{ backend_ip }}
+      replace:
+        path: "{{ lb_conf }}"
+        regexp: "(server\s+{{ backend_ip }}:443)\s+down;"
+        replace: "\1;"
+      notify: Reload nginx
+  handlers:
+    - name: Reload nginx
+      service:
+        name: nginx
+        state: reloaded

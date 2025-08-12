@@ -1,0 +1,19 @@
+- name: Mark a backend 'down' in LB config and reload
+  hosts: lb
+  become: true
+  gather_facts: false
+  vars:
+    backend_ip: "{{ target_ip }}"
+    lb_conf: "/etc/nginx/nginx.conf"
+  tasks:
+    - name: Ensure 'down' flag present for backend {{ backend_ip }}
+      replace:
+        path: "{{ lb_conf }}"
+        regexp: "(server\s+{{ backend_ip }}:443)([^;]*);"
+        replace: "\1 down;"
+      notify: Reload nginx
+  handlers:
+    - name: Reload nginx
+      service:
+        name: nginx
+        state: reloaded

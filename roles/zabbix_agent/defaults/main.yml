@@ -1,0 +1,3 @@
+zabbix_server: "192.168.10.5"
+zabbix_agent_pkg: "zabbix-agent2"
+zabbix_agent_conf: "/etc/zabbix/zabbix_agent2.conf"

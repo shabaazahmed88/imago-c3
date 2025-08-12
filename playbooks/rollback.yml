@@ -1,0 +1,36 @@
+- name: Roll back API nginx site to previous backup (if available)
+  hosts: web
+  become: true
+  gather_facts: false
+  vars:
+    site_path: "{{ nginx_site_path | default('/etc/nginx/sites-available/api.conf') }}"
+  tasks:
+    - name: Find backups for api.conf
+      find:
+        paths: "/etc/nginx/sites-available"
+        patterns: "api.conf.*"
+        file_type: file
+      register: backups
+
+    - name: Fail if no backups found
+      fail:
+        msg: "No backup files found for api.conf"
+      when: backups.matched == 0
+
+    - name: Pick latest backup
+      set_fact:
+        latest_backup: "{{ (backups.files | sort(attribute='mtime', reverse=True))[0].path }}"
+
+    - name: Restore latest backup to site path
+      copy:
+        src: "{{ latest_backup }}"
+        dest: "{{ site_path }}"
+        remote_src: true
+        backup: yes
+      notify: Reload nginx
+
+  handlers:
+    - name: Reload nginx
+      service:
+        name: nginx
+        state: reloaded
